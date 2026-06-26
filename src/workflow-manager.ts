@@ -3,7 +3,7 @@
  */
 
 import { EventEmitter } from "node:events";
-import type { WorkflowAgent } from "./agent.js";
+import type { WorkflowAgent, WorkflowAgentOptions } from "./agent.js";
 import { preview, type WorkflowSnapshot } from "./display.js";
 import { WorkflowError, WorkflowErrorCode } from "./errors.js";
 import {
@@ -14,7 +14,13 @@ import {
   type RunPersistence,
   type RunStatus,
 } from "./run-persistence.js";
-import { type JournalEntry, parseWorkflowScript, runWorkflow, type WorkflowRunResult } from "./workflow.js";
+import {
+  type CheckpointOptions,
+  type JournalEntry,
+  parseWorkflowScript,
+  runWorkflow,
+  type WorkflowRunResult,
+} from "./workflow.js";
 
 export interface ManagedRun {
   runId: string;
@@ -41,7 +47,7 @@ export interface ManagedRun {
 }
 
 /** Per-execution options shared by sync, background, and resume runs. */
-export interface ExecOptions {
+export interface ExecOptions extends Pick<WorkflowAgentOptions, "tools"> {
   /** Replay these journaled agent results for the unchanged prefix (resume). */
   resumeJournal?: Map<number, JournalEntry>;
   /** Cap on total agents for this run. */
@@ -59,7 +65,7 @@ export interface ExecOptions {
   /** Retry attempts after recoverable agent failures for this execution. */
   agentRetries?: number;
   /** Resolve a checkpoint() question with a human reply (only for UI-bearing runs). */
-  confirm?: (promptText: string, options: unknown) => Promise<unknown>;
+  confirm?: (promptText: string, options: CheckpointOptions) => Promise<unknown>;
 }
 
 export interface WorkflowManagerOptions {
@@ -274,6 +280,7 @@ export class WorkflowManager extends EventEmitter {
       concurrency,
       agentRetries,
       confirm,
+      tools,
     } = exec;
     const resolvedAgentTimeoutMs = agentTimeoutMs !== undefined ? agentTimeoutMs : this.defaultAgentTimeoutMs;
     const resolvedConcurrency = concurrency ?? this.concurrency;
@@ -298,6 +305,7 @@ export class WorkflowManager extends EventEmitter {
         agentTimeoutMs: resolvedAgentTimeoutMs,
         tokenBudget,
         confirm,
+        tools,
         loadSavedWorkflow: this.loadSavedWorkflow,
         resumeJournal,
         resumeFromRunId: resumeJournal ? managed.runId : undefined,

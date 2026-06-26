@@ -46,6 +46,32 @@ test("registerBuiltinWorkflows deep-research handler validates empty args (retur
   assert.ok(notified[0].message.includes("Usage"), "should tell the user how to use it");
 });
 
+test("registerBuiltinWorkflows deep-research starts in background when manager is available", async () => {
+  const { pi, commands, sent } = makeCommandRegistryPi();
+  const starts: Array<{ script: string; args: unknown; exec: { tools?: Array<{ name: string }> } }> = [];
+  const manager = {
+    startInBackground: (script: string, args: unknown, exec: { tools?: Array<{ name: string }> }) => {
+      starts.push({ script, args, exec });
+      return { runId: "run-123", promise: Promise.resolve(null) };
+    },
+  };
+  registerBuiltinWorkflows(pi, { cwd: "/tmp", manager: manager as never });
+
+  const deepResearchHandler = commands.find((c) => c.name === "deep-research")?.handler;
+  assert.ok(deepResearchHandler, "deep-research handler should exist");
+
+  const { ctx, notified } = makeNotifyCtx();
+  await deepResearchHandler("why do workflows block?", ctx);
+
+  assert.equal(starts.length, 1);
+  assert.deepEqual(starts[0].args, { question: "why do workflows block?" });
+  assert.ok(starts[0].script.includes("deep_research"));
+  assert.ok(starts[0].exec.tools?.some((tool) => tool.name === "web_search"));
+  assert.equal(sent.length, 0, "background command should not block to send an inline result");
+  assert.equal(notified[0].type, "info");
+  assert.ok(notified[0].message.includes("run-123"));
+});
+
 test("registerBuiltinWorkflows adversarial-review handler validates empty args (returns early)", async () => {
   const { pi, commands } = makeCommandRegistryPi();
   registerBuiltinWorkflows(pi, { cwd: "/tmp" });

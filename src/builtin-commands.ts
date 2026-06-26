@@ -9,6 +9,7 @@ import { generateAdversarialReviewWorkflow, generateMultiPerspectiveWorkflow } f
 import { generateCodebaseAuditWorkflow, generateDeepResearchWorkflow } from "./deep-research.js";
 import { createWebTools } from "./web-tools.js";
 import { runWorkflow, type WorkflowRunResult } from "./workflow.js";
+import type { WorkflowManager } from "./workflow-manager.js";
 
 function alreadyRegistered(pi: ExtensionAPI, name: string): boolean {
   try {
@@ -33,7 +34,7 @@ function reportText(result: WorkflowRunResult): string {
   return JSON.stringify(result.result, null, 2);
 }
 
-export function registerBuiltinWorkflows(pi: ExtensionAPI, opts: { cwd: string }): void {
+export function registerBuiltinWorkflows(pi: ExtensionAPI, opts: { cwd: string; manager?: WorkflowManager }): void {
   const cwd = opts.cwd;
 
   if (!alreadyRegistered(pi, "deep-research")) {
@@ -42,14 +43,26 @@ export function registerBuiltinWorkflows(pi: ExtensionAPI, opts: { cwd: string }
       async handler(args: string, ctx: ExtensionCommandContext) {
         const question = args.trim();
         if (!question) return ctx.ui.notify("Usage: /deep-research <question>", "warning");
+        const script = generateDeepResearchWorkflow();
+        const runOpts = {
+          args: { question },
+          // Research agents need real web access on top of the coding tools.
+          tools: [...createCodingTools(cwd), ...createWebTools()],
+          onPhase: (title: string) => ctx.ui.setStatus("deep-research", `research: ${title}`),
+        };
+        if (opts.manager) {
+          const { runId } = opts.manager.startInBackground(script, runOpts.args, runOpts);
+          ctx.ui.notify(
+            `Researching — running web searches across several angles… (${runId}). Use /workflows status ${runId}.`,
+            "info",
+          );
+          return;
+        }
         ctx.ui.notify("Researching — running web searches across several angles…", "info");
         try {
-          const result = await runWorkflow(generateDeepResearchWorkflow(), {
+          const result = await runWorkflow(script, {
             cwd,
-            args: { question },
-            // Research agents need real web access on top of the coding tools.
-            tools: [...createCodingTools(cwd), ...createWebTools()],
-            onPhase: (title) => ctx.ui.setStatus("deep-research", `research: ${title}`),
+            ...runOpts,
           });
           ctx.ui.setStatus("deep-research", undefined);
           await pi.sendMessage({ customType: "deep-research", content: reportText(result), display: true });
