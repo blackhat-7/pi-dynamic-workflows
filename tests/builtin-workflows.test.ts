@@ -17,6 +17,7 @@ test("generateDeepResearchWorkflow produces a valid, parseable script", () => {
   assert.match(body, /args && args\.question/);
   assert.match(body, /web_search/);
   assert.match(body, /web_fetch/);
+  assert.match(body, /Do NOT use bash\/python\/curl merely to fetch web pages/);
 });
 
 test("generateDeepResearchWorkflow uses configurable angles and minSupport", () => {

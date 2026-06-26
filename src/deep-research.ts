@@ -44,9 +44,10 @@ const queries = (plan.queries || []).slice(0, angles)
 phase('Gather')
 const gathered = await parallel(queries.map((q, i) => () =>
   agent(
-    'Research this query using the web_search and web_fetch tools.\\nQuery: ' + q +
+    'Research this query. Prefer web_search and web_fetch for ordinary web pages.\\nQuery: ' + q +
     '\\n\\nSteps: (1) call web_search with the query; (2) web_fetch the 2 most relevant result URLs; ' +
     '(3) extract concrete, verifiable factual claims, each tagged with the exact source URL it came from. ' +
+    'Do NOT use bash/python/curl merely to fetch web pages; reserve shell commands for repo/code/tool inspection or execution when materially useful. ' +
     'Do NOT invent sources or claims — report only what the fetched pages actually say.',
     { label: 'research ' + (i + 1), schema: { type: 'object', properties: { sources: { type: 'array', items: { type: 'object', properties: { url: { type: 'string' }, claims: { type: 'array', items: { type: 'string' } } }, required: ['url', 'claims'] } } }, required: ['sources'] } }
   )
