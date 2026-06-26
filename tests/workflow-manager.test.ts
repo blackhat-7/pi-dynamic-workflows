@@ -223,6 +223,33 @@ return { a, b }`;
 );
 
 test(
+  "running agent model updates when the subagent resolves its configured model",
+  withTempCwd(async (cwd) => {
+    const manager = new WorkflowManager({
+      cwd,
+      agent: {
+        async run(_prompt: string, options?: { onModelResolved?: (id: string) => void }) {
+          options?.onModelResolved?.("openai-codex/gpt-5.4-mini");
+          await new Promise((resolve) => setTimeout(resolve, 5));
+          return "ok";
+        },
+      },
+      mainModel: "openai-codex/gpt-5.5",
+    });
+
+    let modelWhileRunning: string | undefined;
+    manager.on("agentModel", ({ runId }: { runId: string }) => {
+      const run = manager.getRun(runId);
+      modelWhileRunning = run?.snapshot.agents.find((a) => a.label === "a")?.model;
+    });
+
+    await manager.runSync(oneAgentScript);
+
+    assert.equal(modelWhileRunning, "openai-codex/gpt-5.4-mini");
+  }),
+);
+
+test(
   "runSync persists recoverable agent error details for /workflows",
   withTempCwd(async (cwd) => {
     const manager = new WorkflowManager({

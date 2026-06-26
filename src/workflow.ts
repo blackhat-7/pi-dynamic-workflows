@@ -109,6 +109,7 @@ export interface WorkflowRunOptions extends WorkflowAgentOptions {
     recoverable?: boolean;
   }) => void;
   onAgentHistory?: (event: { label: string; phase?: string; history: AgentHistoryEntry[] }) => void;
+  onAgentModelResolved?: (event: { label: string; phase?: string; model: string }) => void;
   onTokenUsage?: (usage: {
     input: number;
     output: number;
@@ -469,6 +470,7 @@ export async function runWorkflow<T = unknown>(
                 cwd: runCwd,
                 onModelResolved: (id: string) => {
                   displayModel = id;
+                  options.onAgentModelResolved?.({ label, phase: assignedPhase, model: id });
                 },
                 onModelFallback: (spec: string) => {
                   // Make the silent degrade visible in /workflows, not just console.

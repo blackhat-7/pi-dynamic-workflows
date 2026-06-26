@@ -20,6 +20,7 @@ import { shortModel } from "./workflow-ui.js";
 const RUN_EVENTS = [
   "agentStart",
   "agentEnd",
+  "agentModel",
   "phase",
   "log",
   "tokenUsage",
