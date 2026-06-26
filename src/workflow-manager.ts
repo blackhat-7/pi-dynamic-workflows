@@ -290,6 +290,7 @@ export class WorkflowManager extends EventEmitter {
         args,
         agent: this.agent,
         mainModel: this.mainModel,
+        parentSessionId: this.sessionId,
         signal: managed.controller.signal,
         concurrency: resolvedConcurrency,
         agentRetries: resolvedAgentRetries,

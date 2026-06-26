@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import type { AssistantMessage, Model, TextContent } from "@earendil-works/pi-ai";
 import {
+  type AgentSession,
   AuthStorage,
   type CreateAgentSessionOptions,
   createAgentSession,
@@ -18,6 +19,7 @@ import { applyToolPolicy } from "./agent-registry.js";
 import { classifyProviderLimit, WorkflowError, WorkflowErrorCode } from "./errors.js";
 import { loadModelTierConfig, type ModelTierConfig, resolveTierModel } from "./model-tier-config.js";
 import { createStructuredOutputTool, type StructuredOutputCapture } from "./structured-output.js";
+import { installSubagentPermissionForwarding } from "./subagent-permission-forwarding.js";
 
 /**
  * Find a JSON object/array in free-form text: a fenced ```json block if present,
@@ -203,6 +205,8 @@ export interface WorkflowAgentOptions {
    * to the session default when no config is saved yet.
    */
   mainModel?: string;
+  /** Parent Pi session id used by native permission extensions to forward subagent prompts. */
+  parentSessionId?: string;
 }
 
 /**
@@ -293,6 +297,7 @@ export class WorkflowAgent {
   private readonly sessionOptions: Partial<CreateAgentSessionOptions>;
   private readonly instructions?: string;
   private readonly mainModel?: string;
+  private readonly parentSessionId?: string;
   /** Lazily built once; shares the SDK's agentDir/auth so resolved models are authed. */
   private registry?: ModelRegistry;
 
@@ -302,6 +307,7 @@ export class WorkflowAgent {
     this.sessionOptions = options.session ?? {};
     this.instructions = options.instructions;
     this.mainModel = options.mainModel;
+    this.parentSessionId = options.parentSessionId;
   }
 
   private getRegistry(): ModelRegistry {
@@ -369,36 +375,48 @@ export class WorkflowAgent {
     }
 
     const agentDir = getAgentDir();
-    const { session } = await createAgentSession({
-      cwd: runCwd,
+    const restorePermissionEnv = installSubagentPermissionForwarding({
+      parentSessionId: this.parentSessionId,
       agentDir,
-      sessionManager: SessionManager.inMemory(),
-      // Use real SettingsManager to inherit user's default provider/model settings.
-      // SettingsManager.inMemory() doesn't load ~/.pi/settings.json, so subagents
-      // would fall back to the first available model (e.g. openai-codex) which may
-      // not have valid auth, causing silent empty responses.
-      settingsManager: SettingsManager.create(this.cwd, agentDir),
-      customTools,
-      ...this.sessionOptions,
-      // Per-call model wins over any sessionOptions.model.
-      ...(resolvedModel ? { model: resolvedModel } : {}),
     });
 
+    let session: AgentSession | undefined;
     let removeAbortListener: (() => void) | undefined;
     let removeHistoryListener: (() => void) | undefined;
     let lastHistoryEmit = 0;
-    const emitHistory = () => options.onHistory?.(compactAgentHistory(session.messages));
-    const maybeEmitHistory = () => {
-      if (!options.onHistory) return;
-      const now = Date.now();
-      if (now - lastHistoryEmit < 250) return;
-      lastHistoryEmit = now;
-      emitHistory();
-    };
+
     try {
+      session = (
+        await createAgentSession({
+          cwd: runCwd,
+          agentDir,
+          sessionManager: SessionManager.inMemory(),
+          // Use real SettingsManager to inherit user's default provider/model settings.
+          // SettingsManager.inMemory() doesn't load ~/.pi/settings.json, so subagents
+          // would fall back to the first available model (e.g. openai-codex) which may
+          // not have valid auth, causing silent empty responses.
+          settingsManager: SettingsManager.create(this.cwd, agentDir),
+          customTools,
+          ...this.sessionOptions,
+          // Per-call model wins over any sessionOptions.model.
+          ...(resolvedModel ? { model: resolvedModel } : {}),
+        })
+      ).session;
+      await session.bindExtensions({});
+      session.setActiveToolsByName(customTools.map((tool) => tool.name));
+
+      const emitHistory = () => options.onHistory?.(compactAgentHistory(session?.messages ?? []));
+      const maybeEmitHistory = () => {
+        if (!options.onHistory) return;
+        const now = Date.now();
+        if (now - lastHistoryEmit < 250) return;
+        lastHistoryEmit = now;
+        emitHistory();
+      };
+
       if (options.signal?.aborted) throw new Error("Subagent was aborted");
       if (options.signal) {
-        const onAbort = () => void session.abort();
+        const onAbort = () => void session?.abort();
         options.signal.addEventListener("abort", onAbort, { once: true });
         removeAbortListener = () => options.signal?.removeEventListener("abort", onAbort);
       }
@@ -432,28 +450,31 @@ export class WorkflowAgent {
     } finally {
       removeAbortListener?.();
       removeHistoryListener?.();
-      try {
-        emitHistory();
-      } catch {
-        // History is diagnostic only; never let it mask the real result/error.
-      }
-      // Read real usage before disposing — dispose tears down the session state.
-      if (options.onUsage) {
+      if (session) {
         try {
-          const { tokens, cost } = session.getSessionStats();
-          options.onUsage({
-            input: tokens.input,
-            output: tokens.output,
-            cacheRead: tokens.cacheRead,
-            cacheWrite: tokens.cacheWrite,
-            total: tokens.total,
-            cost,
-          });
+          options.onHistory?.(compactAgentHistory(session.messages));
         } catch {
-          // Usage is best-effort; never let stats failure mask the real result/error.
+          // History is diagnostic only; never let it mask the real result/error.
         }
+        // Read real usage before disposing — dispose tears down the session state.
+        if (options.onUsage) {
+          try {
+            const { tokens, cost } = session.getSessionStats();
+            options.onUsage({
+              input: tokens.input,
+              output: tokens.output,
+              cacheRead: tokens.cacheRead,
+              cacheWrite: tokens.cacheWrite,
+              total: tokens.total,
+              cost,
+            });
+          } catch {
+            // Usage is best-effort; never let stats failure mask the real result/error.
+          }
+        }
+        session.dispose();
       }
-      session.dispose();
+      restorePermissionEnv();
     }
   }
 
