@@ -456,10 +456,10 @@ function footerHint(state: NavigatorState, model: NavigatorModel, theme: ThemeLi
   const parts: string[] = [];
   switch (state.kind) {
     case "detail":
-      parts.push("j/k scroll", "esc back");
+      parts.push("j/k/↑/↓ scroll", "PgUp/PgDn", "esc back");
       break;
     case "savedDetail":
-      parts.push("j/k scroll", "esc back", "x delete");
+      parts.push("j/k/↑/↓ scroll", "PgUp/PgDn", "esc back", "x delete");
       break;
     case "runs": {
       const itemKind = model.saved().length > 0 ? state.itemKindAt(model, state.cursor) : "run";
@@ -505,6 +505,18 @@ export function keyToAction(keyId: string | undefined, kind: ViewKind, itemKind?
       return { type: "move", delta: -1 };
     case "j":
       return { type: "move", delta: 1 };
+    case "pageUp":
+    case "ctrl+u":
+      return { type: "move", delta: kind === "detail" || kind === "savedDetail" ? -10 : -1 };
+    case "pageDown":
+    case "ctrl+d":
+      return { type: "move", delta: kind === "detail" || kind === "savedDetail" ? 10 : 1 };
+    case "home":
+      if (kind === "detail" || kind === "savedDetail") return { type: "move", delta: -1_000_000 };
+      return { type: "none" };
+    case "end":
+      if (kind === "detail" || kind === "savedDetail") return { type: "move", delta: 1_000_000 };
+      return { type: "none" };
     case "enter":
     case "return":
     case "right":
@@ -716,6 +728,7 @@ export function openWorkflowNavigator(
     // Supports sidebar mode via opts.anchor="right-center".
     {
       overlay: true,
+      onHandle: (handle) => handle.focus(),
       overlayOptions: {
         width: opts.anchor === "right-center" ? "60%" : "94%",
         maxHeight: "92%",

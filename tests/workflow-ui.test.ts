@@ -373,6 +373,13 @@ test("keyToAction maps keys per view and itemKind", () => {
   assert.deepEqual(keyToAction("left", "agents"), { type: "back" });
   assert.deepEqual(keyToAction("q", "runs"), { type: "close" });
   assert.deepEqual(keyToAction("k", "runs"), { type: "move", delta: -1 });
+  assert.deepEqual(keyToAction("pageUp", "detail"), { type: "move", delta: -10 });
+  assert.deepEqual(keyToAction("pageDown", "detail"), { type: "move", delta: 10 });
+  assert.deepEqual(keyToAction("ctrl+u", "savedDetail"), { type: "move", delta: -10 });
+  assert.deepEqual(keyToAction("ctrl+d", "savedDetail"), { type: "move", delta: 10 });
+  assert.deepEqual(keyToAction("home", "detail"), { type: "move", delta: -1_000_000 });
+  assert.deepEqual(keyToAction("end", "detail"), { type: "move", delta: 1_000_000 });
+  assert.deepEqual(keyToAction("home", "runs"), { type: "none" });
   assert.deepEqual(keyToAction("unknown", "runs"), { type: "none" });
   assert.deepEqual(keyToAction(undefined, "runs"), { type: "none" });
   assert.deepEqual(keyToAction("return", "agents"), { type: "drill" });
@@ -453,7 +460,7 @@ test("renderNavigator shows agent detail view", () => {
   assert.match(text, /Status:/);
   assert.match(text, /Model:/);
   assert.match(text, /model/); // shortModel strips provider prefix
-  assert.match(text, /j\/k scroll/); // detail view footer
+  assert.match(text, /j\/k\/↑\/↓ scroll/); // detail view footer
 });
 
 test("renderNavigator shows agent error diagnostics in detail view", () => {
@@ -496,7 +503,7 @@ test("renderNavigator shows correct footer hint per view", () => {
   state.drill(model);
   state.drill(model);
   const detailLines = renderNavigator(state, model, 80);
-  assert.match(detailLines.join("\n"), /j\/k scroll/);
+  assert.match(detailLines.join("\n"), /j\/k\/↑\/↓ scroll/);
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -593,7 +600,7 @@ test("renderNavigator shows saved detail view", () => {
   assert.match(text, /Location:/);
   assert.match(text, /Script:/);
   assert.match(text, /Saved at:/);
-  assert.match(text, /j\/k scroll/);
+  assert.match(text, /j\/k\/↑\/↓ scroll/);
   assert.match(text, /esc back/);
 });
 
