@@ -589,8 +589,11 @@ export function openWorkflowNavigator(
       ];
       const onEvent = () => rerender();
       for (const ev of events) manager.on(ev, onEvent);
+      let removeTerminalInput: (() => void) | undefined;
       const cleanup = () => {
         for (const ev of events) manager.off(ev, onEvent);
+        removeTerminalInput?.();
+        removeTerminalInput = undefined;
       };
 
       const act = (data: string) => {
@@ -684,6 +687,13 @@ export function openWorkflowNavigator(
         }
         rerender();
       };
+
+      removeTerminalInput = ui.onTerminalInput((data) => {
+        const itemKind = state.kind === "runs" ? state.itemKindAt(model, state.cursor) : undefined;
+        if (keyToAction(parseKey(data), state.kind, itemKind).type === "none") return undefined;
+        act(data);
+        return { consume: true };
+      });
 
       // Wrap the rendered content inside a visual box border for better
       // screen-boundary contrast. Follows the same pattern as pi-ask-user:
