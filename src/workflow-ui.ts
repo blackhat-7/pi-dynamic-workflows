@@ -456,10 +456,10 @@ function footerHint(state: NavigatorState, model: NavigatorModel, theme: ThemeLi
   const parts: string[] = [];
   switch (state.kind) {
     case "detail":
-      parts.push("j/k/↑/↓ scroll", "PgUp/PgDn", "esc back");
+      parts.push("j/k/↑/↓ scroll", "esc back");
       break;
     case "savedDetail":
-      parts.push("j/k/↑/↓ scroll", "PgUp/PgDn", "esc back", "x delete");
+      parts.push("j/k/↑/↓ scroll", "esc back", "x delete");
       break;
     case "runs": {
       const itemKind = model.saved().length > 0 ? state.itemKindAt(model, state.cursor) : "run";
@@ -480,6 +480,19 @@ function footerHint(state: NavigatorState, model: NavigatorModel, theme: ThemeLi
 
 function wrap(text: string, width: number): string[] {
   return wrapTextWithAnsi(text ?? "", Math.max(20, width));
+}
+
+interface PiMouseWheelEvent {
+  deltaY?: number;
+  delta?: number;
+}
+
+interface PiMouseApi {
+  capture(args: { ui: ExtensionUIContext; tui: TUI; onWheel(event: PiMouseWheelEvent): void }): () => void;
+}
+
+function piMouse(): PiMouseApi | undefined {
+  return (globalThis as typeof globalThis & { piMouse?: PiMouseApi }).piMouse;
 }
 
 /** What a key press should do. Pure mapping from a parsed key id to an action. */
@@ -505,18 +518,6 @@ export function keyToAction(keyId: string | undefined, kind: ViewKind, itemKind?
       return { type: "move", delta: -1 };
     case "j":
       return { type: "move", delta: 1 };
-    case "pageUp":
-    case "ctrl+u":
-      return { type: "move", delta: kind === "detail" || kind === "savedDetail" ? -10 : -1 };
-    case "pageDown":
-    case "ctrl+d":
-      return { type: "move", delta: kind === "detail" || kind === "savedDetail" ? 10 : 1 };
-    case "home":
-      if (kind === "detail" || kind === "savedDetail") return { type: "move", delta: -1_000_000 };
-      return { type: "none" };
-    case "end":
-      if (kind === "detail" || kind === "savedDetail") return { type: "move", delta: 1_000_000 };
-      return { type: "none" };
     case "enter":
     case "return":
     case "right":
@@ -589,11 +590,14 @@ export function openWorkflowNavigator(
       ];
       const onEvent = () => rerender();
       for (const ev of events) manager.on(ev, onEvent);
-      let removeTerminalInput: (() => void) | undefined;
+      let cleaned = false;
+      let releaseMouse: (() => void) | undefined;
       const cleanup = () => {
+        if (cleaned) return;
+        cleaned = true;
         for (const ev of events) manager.off(ev, onEvent);
-        removeTerminalInput?.();
-        removeTerminalInput = undefined;
+        releaseMouse?.();
+        releaseMouse = undefined;
       };
 
       const act = (data: string) => {
@@ -688,11 +692,13 @@ export function openWorkflowNavigator(
         rerender();
       };
 
-      removeTerminalInput = ui.onTerminalInput((data) => {
-        const itemKind = state.kind === "runs" ? state.itemKindAt(model, state.cursor) : undefined;
-        if (keyToAction(parseKey(data), state.kind, itemKind).type === "none") return undefined;
-        act(data);
-        return { consume: true };
+      releaseMouse = piMouse()?.capture({
+        ui,
+        tui,
+        onWheel: (event) => {
+          state.move(event.deltaY ?? event.delta ?? 0, currentCount(state, model));
+          rerender();
+        },
       });
 
       // Wrap the rendered content inside a visual box border for better
@@ -738,7 +744,6 @@ export function openWorkflowNavigator(
     // Supports sidebar mode via opts.anchor="right-center".
     {
       overlay: true,
-      onHandle: (handle) => handle.focus(),
       overlayOptions: {
         width: opts.anchor === "right-center" ? "60%" : "94%",
         maxHeight: "92%",

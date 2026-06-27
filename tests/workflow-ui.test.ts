@@ -373,13 +373,6 @@ test("keyToAction maps keys per view and itemKind", () => {
   assert.deepEqual(keyToAction("left", "agents"), { type: "back" });
   assert.deepEqual(keyToAction("q", "runs"), { type: "close" });
   assert.deepEqual(keyToAction("k", "runs"), { type: "move", delta: -1 });
-  assert.deepEqual(keyToAction("pageUp", "detail"), { type: "move", delta: -10 });
-  assert.deepEqual(keyToAction("pageDown", "detail"), { type: "move", delta: 10 });
-  assert.deepEqual(keyToAction("ctrl+u", "savedDetail"), { type: "move", delta: -10 });
-  assert.deepEqual(keyToAction("ctrl+d", "savedDetail"), { type: "move", delta: 10 });
-  assert.deepEqual(keyToAction("home", "detail"), { type: "move", delta: -1_000_000 });
-  assert.deepEqual(keyToAction("end", "detail"), { type: "move", delta: 1_000_000 });
-  assert.deepEqual(keyToAction("home", "runs"), { type: "none" });
   assert.deepEqual(keyToAction("unknown", "runs"), { type: "none" });
   assert.deepEqual(keyToAction(undefined, "runs"), { type: "none" });
   assert.deepEqual(keyToAction("return", "agents"), { type: "drill" });
