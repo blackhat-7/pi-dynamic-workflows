@@ -592,6 +592,7 @@ export function openWorkflowNavigator(
       for (const ev of events) manager.on(ev, onEvent);
       let cleaned = false;
       let releaseMouse: (() => void) | undefined;
+      let wheelPaintFlip = false;
       const cleanup = () => {
         if (cleaned) return;
         cleaned = true;
@@ -696,7 +697,10 @@ export function openWorkflowNavigator(
         ui,
         tui,
         onWheel: (event) => {
-          state.move(event.deltaY ?? event.delta ?? 0, currentCount(state, model));
+          const delta = event.deltaY ?? event.delta ?? 0;
+          if (delta === 0) return;
+          state.move(delta, currentCount(state, model));
+          wheelPaintFlip = !wheelPaintFlip;
           rerender();
         },
       });
@@ -732,7 +736,11 @@ export function openWorkflowNavigator(
             const trailingPad = width - fullLine.length;
             return bgColor(fullLine + (trailingPad > 0 ? " ".repeat(trailingPad) : ""));
           };
-          return [bgColor(topBorder), ...raw.map(wrapAndBg), bgColor(botBorder)];
+          // Toggle an invisible ANSI marker on wheel scroll so pi-tui repaints the
+          // whole overlay rectangle through normal diffing, avoiding stale cells
+          // without forcing a full-screen/scrollback-clearing redraw.
+          const repaintMarker = wheelPaintFlip ? "\x1b[0m" : "\x1b[39m";
+          return [bgColor(topBorder), ...raw.map(wrapAndBg), bgColor(botBorder)].map((line) => line + repaintMarker);
         },
         handleInput: (data: string) => act(data),
         invalidate: () => {},
